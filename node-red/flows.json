@@ -1,29 +1,29 @@
 [
     {
-        "id": "899e4aa3eb8aac02",
+        "id": "6296763d93942128",
         "type": "tab",
         "label": "GPS Tracking",
         "disabled": false,
         "info": ""
     },
     {
-        "id": "153d0284b56af85e",
+        "id": "c33b228d308f75d1",
         "type": "serial in",
-        "z": "899e4aa3eb8aac02",
+        "z": "6296763d93942128",
         "name": "Receiver Serial",
         "serial": "0623e5a8723cb25f",
         "x": 520,
         "y": 180,
         "wires": [
             [
-                "effad05ebee0293e"
+                "550fe7022a3f4f69"
             ]
         ]
     },
     {
-        "id": "effad05ebee0293e",
+        "id": "550fe7022a3f4f69",
         "type": "function",
-        "z": "899e4aa3eb8aac02",
+        "z": "6296763d93942128",
         "name": "Parse Packet",
         "func": "let packet = msg.payload;\n\nif (typeof packet !== 'string') {\n  msg.payload = { error: \"Invalid packet type\", raw: packet };\n  return msg;\n}\n\npacket = packet.trim(); // Remove newline\n\nif (!packet.includes('Received Packet')) {\n  return null; // Skip irrelevant messages\n}\n\n// Updated Regex\nlet match = packet.match(/Received Packet \\(Size: (\\d+) bytes\\): Pkt#(\\d+)(?: Lat:([-?\\d.]+))?(?: Lon:([-?\\d.]+))?(?: Alt:([-?\\d.]+)m)? \\(RSSI: ([-?\\d]+) dBm, SNR: ([-?\\d.]+) dB\\)/);\n\nif (match) {\n  let size = parseInt(match[1]);\n  let packetNum = parseInt(match[2]);\n  let lat = match[3] ? parseFloat(match[3]) : null;\n  let lon = match[4] ? parseFloat(match[4]) : null;\n  let alt = match[5] ? parseFloat(match[5]) : null;\n  let rssi = parseInt(match[6]);\n  let snr = parseFloat(match[7]);\n  let timestamp = new Date().toISOString();\n\n  // Build payload\n  msg.payload = {\n    packetNum: packetNum,\n    lat: lat,\n    lon: lon,\n    alt: alt,\n    rssi: rssi,\n    snr: snr,\n    timestamp: timestamp\n  };\n\n  // Build params for SQLite prepared statement\n  msg.params = {\n    $packetNum: packetNum,\n    $lat: lat,\n    $lon: lon,\n    $alt: alt,\n    $rssi: rssi,\n    $snr: snr,\n    $timestamp: timestamp\n  };\n\n  // Add worldmap data for live location\n  if (lat !== null && lon !== null) {\n    msg.worldmap = {\n      name: \"Live Tracker\",\n      layer: \"live\",\n      lat: lat,\n      lon: lon,\n      alt: alt || 0,\n      icon: \"fa-user-circle\",\n      iconColor: \"blue\",\n      center: [lat, lon],\n      zoom: 15\n    };\n  }\n\n  return msg;\n} else {\n  msg.payload = { error: \"Regex did not match\", raw: packet };\n  return msg;\n}",
         "outputs": 1,
@@ -36,17 +36,16 @@
         "y": 180,
         "wires": [
             [
-                "89b341b3de01cf69",
-                "8dc568d9aa83e3a5",
-                "a4486925b09c3f90",
-                "ef3c3442bea9172e"
+                "b01f8912e2d1b630",
+                "34a95035a26b8207",
+                "878e7bce37ea44df"
             ]
         ]
     },
     {
-        "id": "89b341b3de01cf69",
+        "id": "b01f8912e2d1b630",
         "type": "sqlite",
-        "z": "899e4aa3eb8aac02",
+        "z": "6296763d93942128",
         "mydb": "e2f3a4b5.c6d7e8",
         "sqlquery": "prepared",
         "sql": "INSERT INTO gps_data (packetNum, lat, lon, alt, rssi, snr, timestamp) \nVALUES ($packetNum, $lat, $lon, $alt, $rssi, $snr, $timestamp)",
@@ -58,11 +57,11 @@
         ]
     },
     {
-        "id": "8dc568d9aa83e3a5",
+        "id": "34a95035a26b8207",
         "type": "function",
-        "z": "899e4aa3eb8aac02",
+        "z": "6296763d93942128",
         "name": "Dashboard Payload",
-        "func": "// Select the latest payload (most recent GPS point)\nlet payload = msg.payload[msg.payload.length - 1];\n\n// Geofence coordinates for Suryabinayak Jungle\nconst geofence = [\n    [27.667079, 85.465263],\n    [27.667079, 85.467263],\n    [27.669079, 85.467263],\n    [27.669079, 85.465263]\n];\n\n// const geofence = [\n//     [27.669200, 85.426500],\n//     [27.667800, 85.428000],\n//     [27.666200, 85.429700],\n//     [27.665800, 85.432000],\n//     [27.666500, 85.434200],\n//     [27.668000, 85.435000],\n//     [27.669700, 85.434300],\n//     [27.671000, 85.432500],\n//     [27.671200, 85.430000],\n//     [27.670500, 85.427800]\n// ];\n\n// Function to check if point is inside polygon\nfunction pointInPolygon(point, polygon) {\n    const x = point.lat, y = point.lon;\n    let inside = false;\n    for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {\n        const xi = polygon[i][0], yi = polygon[i][1];\n        const xj = polygon[j][0], yj = polygon[j][1];\n\n        const intersect = ((yi > y) !== (yj > y)) &&\n            (x < ((xj - xi) * (y - yi)) / (yj - yi) + xi);\n        if (intersect) inside = !inside;\n    }\n    return inside;\n}\n\n// Check if the point is inside the geofence\nconst inside = pointInPolygon(payload, geofence);\n\n// Create alert message\nmsg.alert = {\n    payload: inside\n        ? \"✅ Tracker is inside the Khwopa Jungle GeoFence.\"\n        : \"🚨 ALERT: Tracker has exited the GeoFence!\",\n    topic: \"GeoFence Status\"\n};\n\n// Existing outputs\nmsg.rssi = { payload: payload.rssi, topic: \"RSSI\" };\nmsg.snr = { payload: payload.snr, topic: \"SNR\" };\nmsg.table = { payload: msg.payload, topic: \"GPS Data\" };\nmsg.map = {\n    payload: {\n        name: \"tracker\",\n        lat: parseFloat(payload.lat),\n        lon: parseFloat(payload.lon),\n        icon: \"fa-map-marker\",\n        layer: \"GPS\",\n        popup: `Lat: ${payload.lat}, Lon: ${payload.lon}`\n    },\n    topic: \"Map\"\n};\n\n// Return all outputs (add alert as the fifth output)\nreturn [msg.rssi, msg.snr, msg.table, msg.map, msg.alert];",
+        "func": "// Select the latest payload (most recent GPS point)\nlet payload = msg.payload[msg.payload.length - 1];\n\n// Geofence coordinates for Suryabinayak Jungle\nconst geofence = [\n    [27.669200, 85.426500],\n    [27.667800, 85.428000],\n    [27.666200, 85.429700],\n    [27.665800, 85.432000],\n    [27.666500, 85.434200],\n    [27.668000, 85.435000],\n    [27.669700, 85.434300],\n    [27.671000, 85.432500],\n    [27.671200, 85.430000],\n    [27.670500, 85.427800]\n];\n\n// Function to check if point is inside polygon\nfunction pointInPolygon(point, polygon) {\n    const x = point.lat, y = point.lon;\n    let inside = false;\n    for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {\n        const xi = polygon[i][0], yi = polygon[i][1];\n        const xj = polygon[j][0], yj = polygon[j][1];\n\n        const intersect = ((yi > y) !== (yj > y)) &&\n            (x < ((xj - xi) * (y - yi)) / (yj - yi) + xi);\n        if (intersect) inside = !inside;\n    }\n    return inside;\n}\n\n// Check if the point is inside the geofence\nconst inside = pointInPolygon(payload, geofence);\n\n// Create alert message\nmsg.alert = {\n    payload: inside\n        ? \"✅ Tracker is inside the Suryabinayak Jungle GeoFence.\"\n        : \"🚨 ALERT: Tracker has exited the GeoFence!\",\n    topic: \"GeoFence Status\"\n};\n\n// Existing outputs\nmsg.rssi = { payload: payload.rssi, topic: \"RSSI\" };\nmsg.snr = { payload: payload.snr, topic: \"SNR\" };\nmsg.table = { payload: msg.payload, topic: \"GPS Data\" };\nmsg.map = {\n    payload: {\n        name: \"tracker\",\n        lat: parseFloat(payload.lat),\n        lon: parseFloat(payload.lon),\n        icon: \"fa-map-marker\",\n        layer: \"GPS\",\n        popup: `Lat: ${payload.lat}, Lon: ${payload.lon}`\n    },\n    topic: \"Map\"\n};\n\n// Return all outputs (add alert as the fifth output)\nreturn [msg.rssi, msg.snr, msg.table, msg.map, msg.alert];",
         "outputs": 5,
         "timeout": "",
         "noerr": 0,
@@ -73,32 +72,32 @@
         "y": 340,
         "wires": [
             [
-                "ce9584479d4c6b38"
+                "412e87a645c21940"
             ],
             [
-                "e44aec0fa3e96771"
+                "f55f68c0611fec5d"
             ],
             [
-                "213ec523293ee27f"
+                "157c5f94c3261b70"
             ],
             [
-                "1e144b99d22d1fe3"
+                "c2e972e3639e911b"
             ],
             [
-                "24f4054b266cbb92",
-                "6199e23164d5a81f"
+                "a292dabb906d103b",
+                "7b4b93ec9276e506"
             ]
         ]
     },
     {
-        "id": "ce9584479d4c6b38",
+        "id": "412e87a645c21940",
         "type": "ui_gauge",
-        "z": "899e4aa3eb8aac02",
+        "z": "6296763d93942128",
         "name": "RSSI Gauge",
         "group": "e7f8a9b0.c1d2e3",
-        "order": 1,
-        "width": 0,
-        "height": 0,
+        "order": 3,
+        "width": 6,
+        "height": 3,
         "gtype": "gage",
         "title": "RSSI (dBm)",
         "label": "dBm",
@@ -119,14 +118,14 @@
         "wires": []
     },
     {
-        "id": "e44aec0fa3e96771",
+        "id": "f55f68c0611fec5d",
         "type": "ui_gauge",
-        "z": "899e4aa3eb8aac02",
+        "z": "6296763d93942128",
         "name": "SNR Gauge",
         "group": "e7f8a9b0.c1d2e3",
-        "order": 3,
-        "width": 0,
-        "height": 0,
+        "order": 1,
+        "width": 6,
+        "height": 3,
         "gtype": "gage",
         "title": "SNR (dB)",
         "label": "dB",
@@ -146,14 +145,14 @@
         "wires": []
     },
     {
-        "id": "34da186f1f053822",
+        "id": "351f709b7de88624",
         "type": "ui_chart",
-        "z": "899e4aa3eb8aac02",
+        "z": "6296763d93942128",
         "name": "Altitude Chart",
         "group": "f8a9b0c1.d2e3f4",
         "order": 1,
-        "width": 0,
-        "height": 0,
+        "width": 6,
+        "height": 5,
         "label": "Altitude (m)",
         "chartType": "line",
         "legend": "false",
@@ -190,14 +189,14 @@
         ]
     },
     {
-        "id": "213ec523293ee27f",
+        "id": "157c5f94c3261b70",
         "type": "ui_template",
-        "z": "899e4aa3eb8aac02",
-        "group": "f8a9b0c1.d2e3f4",
+        "z": "6296763d93942128",
+        "group": "2055fd5f51edf605",
         "name": "GPS Data Table",
-        "order": 3,
-        "width": 12,
-        "height": 6,
+        "order": 1,
+        "width": 25,
+        "height": 2,
         "format": "<style>\ntable { width: 100%; border-collapse: collapse; }\nth, td { border: 1px solid #ddd; padding: 8px; text-align: left; }\nth { background-color: #f2f2f2; }\n</style>\n<table>\n  <tr>\n    <th>Packet #</th>\n    <th>Latitude</th>\n    <th>Longitude</th>\n    <th>Altitude (m)</th>\n    <th>RSSI (dBm)</th>\n    <th>SNR (dB)</th>\n    <th>Timestamp</th>\n  </tr>\n  <tr>\n    <td>{{msg.payload.packetNum}}</td>\n    <td>{{msg.payload.lat || 'N/A'}}</td>\n    <td>{{msg.payload.lon || 'N/A'}}</td>\n    <td>{{msg.payload.alt || 'N/A'}}</td>\n    <td>{{msg.payload.rssi}}</td>\n    <td>{{msg.payload.snr}}</td>\n    <td>{{msg.payload.timestamp}}</td>\n  </tr>\n</table>",
         "storeOutMessages": false,
         "fwdInMessages": false,
@@ -211,13 +210,13 @@
         ]
     },
     {
-        "id": "1e144b99d22d1fe3",
+        "id": "c2e972e3639e911b",
         "type": "ui_worldmap",
-        "z": "899e4aa3eb8aac02",
+        "z": "6296763d93942128",
         "group": "a9b0c1d2.e3f4a5",
         "order": 1,
-        "width": 0,
-        "height": 0,
+        "width": 12,
+        "height": 7,
         "name": "Map Widget",
         "lat": "",
         "lon": "",
@@ -241,14 +240,14 @@
         "mapurl": "",
         "mapopt": "",
         "mapwms": false,
-        "x": 1530,
-        "y": 360,
+        "x": 1370,
+        "y": 340,
         "wires": []
     },
     {
-        "id": "ef3c3442bea9172e",
+        "id": "5aa6535afb660c01",
         "type": "debug",
-        "z": "899e4aa3eb8aac02",
+        "z": "6296763d93942128",
         "name": "debug 2",
         "active": true,
         "tosidebar": true,
@@ -263,9 +262,9 @@
         "wires": []
     },
     {
-        "id": "d41ab296fc0eb297",
+        "id": "9338b98e2215a8b5",
         "type": "inject",
-        "z": "899e4aa3eb8aac02",
+        "z": "6296763d93942128",
         "name": "Trigger Altitude Query",
         "props": [
             {
@@ -287,14 +286,14 @@
         "y": 560,
         "wires": [
             [
-                "a914070999c759a1"
+                "9d75936c684411f0"
             ]
         ]
     },
     {
-        "id": "a914070999c759a1",
+        "id": "9d75936c684411f0",
         "type": "sqlite",
-        "z": "899e4aa3eb8aac02",
+        "z": "6296763d93942128",
         "mydb": "e2f3a4b5.c6d7e8",
         "sqlquery": "fixed",
         "sql": "SELECT timestamp, alt FROM gps_data WHERE alt IS NOT NULL ORDER BY timestamp DESC LIMIT 50",
@@ -303,14 +302,14 @@
         "y": 520,
         "wires": [
             [
-                "3a47321c4c4b7732"
+                "4285db6c8eebfab1"
             ]
         ]
     },
     {
-        "id": "3a47321c4c4b7732",
+        "id": "4285db6c8eebfab1",
         "type": "function",
-        "z": "899e4aa3eb8aac02",
+        "z": "6296763d93942128",
         "name": "Format Altitude Data",
         "func": "let rows = msg.payload;\nlet data = rows.map(row => ({\n    x: new Date(row.timestamp),\n    y: row.alt || 0\n}));\nmsg.payload = [{\n    series: [\"Altitude\"],\n    data: [data],\n    labels: [\"\"]\n}];\nmsg.topic = \"Altitude\";\nreturn msg;",
         "outputs": 1,
@@ -323,14 +322,14 @@
         "y": 480,
         "wires": [
             [
-                "34da186f1f053822"
+                "351f709b7de88624"
             ]
         ]
     },
     {
-        "id": "a4486925b09c3f90",
+        "id": "878e7bce37ea44df",
         "type": "function",
-        "z": "899e4aa3eb8aac02",
+        "z": "6296763d93942128",
         "name": "Store Path and Coordinates",
         "func": "// Initialize an array to store path points if it doesn't exist\nif (!context.get('pathPoints')) {\n    context.set('pathPoints', []);\n}\n\n// Get the current path points\nlet pathPoints = context.get('pathPoints');\n\n// Add the new point (latitude and longitude) to the array\nlet newPoint = {\n    lat: msg.payload.lat,\n    lon: msg.payload.lon\n};\npathPoints.push(newPoint);\n\n// Keep only the last 50 points to avoid overloading the map (optional)\nif (pathPoints.length > 50) {\n    pathPoints.shift(); // Remove the oldest point\n}\n\n// Update the stored path points\ncontext.set('pathPoints', pathPoints);\n\n// Set msg.payload to the array of points for the Map Widget\nmsg.payload = pathPoints;\n\n// Add the latest coordinates to msg for dynamic map centering\nmsg.worldmapStartLat = newPoint.lat;\nmsg.worldmapStartLon = newPoint.lon;\n\nreturn msg;",
         "outputs": 1,
@@ -343,14 +342,14 @@
         "y": 320,
         "wires": [
             [
-                "d5ed09f5c4d100a2"
+                "3d8700f0d6ce93b4"
             ]
         ]
     },
     {
-        "id": "d5ed09f5c4d100a2",
+        "id": "3d8700f0d6ce93b4",
         "type": "function",
-        "z": "899e4aa3eb8aac02",
+        "z": "6296763d93942128",
         "name": "Format path and center",
         "func": "// Send the path data and center the map on the latest point\nmsg.worldmap = {\n    name: \"GPS Path\",\n    layer: \"path\",\n    path: msg.payload.map(row => [row.lat, row.lon]),\n    color: \"red\",\n    weight: 3,\n    opacity: 0.8\n};\n// Add a command to center the map on the latest point\nmsg.worldmap.center = [msg.worldmapStartLat, msg.worldmapStartLon];\nmsg.worldmap.zoom = 15; // Optional: Set zoom level\nreturn msg;",
         "outputs": 1,
@@ -363,14 +362,15 @@
         "y": 360,
         "wires": [
             [
-                "8dc568d9aa83e3a5"
+                "34a95035a26b8207",
+                "5aa6535afb660c01"
             ]
         ]
     },
     {
-        "id": "c84201f8700d28ab",
+        "id": "5472b861b31e6d96",
         "type": "inject",
-        "z": "899e4aa3eb8aac02",
+        "z": "6296763d93942128",
         "name": "inject1",
         "props": [
             {
@@ -391,29 +391,29 @@
         ]
     },
     {
-        "id": "0c8089de6f55e785",
+        "id": "c6d422782faed92e",
         "type": "function",
-        "z": "899e4aa3eb8aac02",
+        "z": "6296763d93942128",
         "name": "Geo_fence",
-        "func": "msg.payload = {\n    name: \"Suryabinayak Jungle\",\n    // area: [\n    //     [27.669200, 85.426500],\n    //     [27.667800, 85.428000],\n    //     [27.666200, 85.429700],\n    //     [27.665800, 85.432000],\n    //     [27.666500, 85.434200],\n    //     [27.668000, 85.435000],\n    //     [27.669700, 85.434300],\n    //     [27.671000, 85.432500],\n    //     [27.671200, 85.430000],\n    //     [27.670500, 85.427800]\n    // ],\n    area: [\n        [27.667079, 85.465263],\n        [27.667079, 85.467263],\n        [27.669079, 85.467263],\n        [27.669079, 85.465263]\n],\n    color: \"darkgreen\",\n    fillOpacity: 0.35\n};\nreturn msg;\n",
+        "func": "msg.payload = {\n    name: \"Suryabinayak Jungle\",\n    area: [\n        [27.669200, 85.426500],\n        [27.667800, 85.428000],\n        [27.666200, 85.429700],\n        [27.665800, 85.432000],\n        [27.666500, 85.434200],\n        [27.668000, 85.435000],\n        [27.669700, 85.434300],\n        [27.671000, 85.432500],\n        [27.671200, 85.430000],\n        [27.670500, 85.427800]\n    ],\n    color: \"darkgreen\",\n    fillOpacity: 0.35\n};\nreturn msg;\n",
         "outputs": 1,
         "timeout": 0,
         "noerr": 0,
         "initialize": "",
         "finalize": "",
         "libs": [],
-        "x": 1470,
-        "y": 160,
+        "x": 1210,
+        "y": 140,
         "wires": [
             [
-                "1e144b99d22d1fe3"
+                "c2e972e3639e911b"
             ]
         ]
     },
     {
-        "id": "b129e144d4f5d8bf",
+        "id": "2988b7df9f610415",
         "type": "inject",
-        "z": "899e4aa3eb8aac02",
+        "z": "6296763d93942128",
         "name": "Inject GeoFence Lat Lon",
         "props": [
             {
@@ -427,18 +427,18 @@
         "topic": "",
         "payload": "",
         "payloadType": "date",
-        "x": 1390,
-        "y": 200,
+        "x": 1130,
+        "y": 180,
         "wires": [
             [
-                "0c8089de6f55e785"
+                "c6d422782faed92e"
             ]
         ]
     },
     {
-        "id": "874a4949d2cf88ba",
+        "id": "7207daf5cb6943a5",
         "type": "sqlite",
-        "z": "899e4aa3eb8aac02",
+        "z": "6296763d93942128",
         "mydb": "e2f3a4b5.c6d7e8",
         "sqlquery": "fixed",
         "sql": "CREATE TABLE IF NOT EXISTS gps_data (id INTEGER PRIMARY KEY AUTOINCREMENT, packetNum INTEGER, lat REAL, lon REAL, alt REAL, rssi INTEGER, snr REAL, timestamp TEXT)",
@@ -450,9 +450,9 @@
         ]
     },
     {
-        "id": "d5a3ecdd8ce0f1ce",
+        "id": "ff3ea1bccbd382f3",
         "type": "inject",
-        "z": "899e4aa3eb8aac02",
+        "z": "6296763d93942128",
         "name": "Inside the GeoFence",
         "props": [
             {
@@ -473,9 +473,9 @@
         ]
     },
     {
-        "id": "9f5bb01d5d90e52a",
+        "id": "d13910aeb0a11e3e",
         "type": "inject",
-        "z": "899e4aa3eb8aac02",
+        "z": "6296763d93942128",
         "name": "Outside the GeoFence",
         "props": [
             {
@@ -496,13 +496,13 @@
         ]
     },
     {
-        "id": "24f4054b266cbb92",
+        "id": "a292dabb906d103b",
         "type": "ui_text",
-        "z": "899e4aa3eb8aac02",
-        "group": "3408d444e45450f3",
-        "order": 0,
-        "width": 0,
-        "height": 0,
+        "z": "6296763d93942128",
+        "group": "944a4dbca702f568",
+        "order": 1,
+        "width": 6,
+        "height": 1,
         "name": "",
         "label": "",
         "format": "{{msg.payload}}",
@@ -517,9 +517,9 @@
         "wires": []
     },
     {
-        "id": "6199e23164d5a81f",
+        "id": "7b4b93ec9276e506",
         "type": "ui_toast",
-        "z": "899e4aa3eb8aac02",
+        "z": "6296763d93942128",
         "position": "top right",
         "displayTime": "3",
         "highlight": "",
@@ -536,13 +536,23 @@
         "wires": []
     },
     {
-        "id": "55da915e7a55d25c",
+        "id": "0920276c468c1243",
         "type": "ui_spacer",
-        "z": "899e4aa3eb8aac02",
+        "z": "6296763d93942128",
         "name": "spacer",
-        "group": "f8a9b0c1.d2e3f4",
-        "order": 2,
+        "group": "876deb5c48856af1",
+        "order": 1,
         "width": 1,
+        "height": 1
+    },
+    {
+        "id": "7cd867642f2ffa66",
+        "type": "ui_spacer",
+        "z": "6296763d93942128",
+        "name": "spacer",
+        "group": "e7f8a9b0.c1d2e3",
+        "order": 2,
+        "width": 6,
         "height": 1
     },
     {
@@ -568,7 +578,7 @@
     {
         "id": "e2f3a4b5.c6d7e8",
         "type": "sqlitedb",
-        "db": "C:\\Users\\User\\gps_data.db",
+        "db": "C:\\Users\\saura\\gps_data.db",
         "mode": "RWC"
     },
     {
@@ -578,18 +588,30 @@
         "tab": "b0c1d2e3.f4a5b6",
         "order": 1,
         "disp": true,
-        "width": "6",
+        "width": 6,
         "collapse": false
     },
     {
         "id": "f8a9b0c1.d2e3f4",
         "type": "ui_group",
-        "name": "GPS Data",
+        "name": "Altitude",
         "tab": "b0c1d2e3.f4a5b6",
         "order": 2,
         "disp": true,
-        "width": "12",
-        "collapse": false
+        "width": 6,
+        "collapse": false,
+        "className": ""
+    },
+    {
+        "id": "2055fd5f51edf605",
+        "type": "ui_group",
+        "name": "GPS Table",
+        "tab": "b0c1d2e3.f4a5b6",
+        "order": 5,
+        "disp": true,
+        "width": 25,
+        "collapse": false,
+        "className": ""
     },
     {
         "id": "a9b0c1d2.e3f4a5",
@@ -598,15 +620,26 @@
         "tab": "b0c1d2e3.f4a5b6",
         "order": 3,
         "disp": true,
-        "width": "12",
+        "width": 12,
         "collapse": false
     },
     {
-        "id": "3408d444e45450f3",
+        "id": "944a4dbca702f568",
         "type": "ui_group",
         "name": "Alert",
         "tab": "b0c1d2e3.f4a5b6",
-        "order": 5,
+        "order": 4,
+        "disp": true,
+        "width": 6,
+        "collapse": false,
+        "className": ""
+    },
+    {
+        "id": "876deb5c48856af1",
+        "type": "ui_group",
+        "name": "Hello rabisha",
+        "tab": "95b4fb7554952edf",
+        "order": 1,
         "disp": true,
         "width": 6,
         "collapse": false,
@@ -620,5 +653,12 @@
         "order": 1,
         "disabled": false,
         "hidden": false
+    },
+    {
+        "id": "95b4fb7554952edf",
+        "type": "ui_tab",
+        "name": "Tab 2",
+        "icon": "dashboard",
+        "order": 2
     }
 ]
